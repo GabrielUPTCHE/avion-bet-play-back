@@ -1,0 +1,46 @@
+# Configuración MySQL Master (Maestro)
+# Archivo: /etc/mysql/mysql.conf.d/mysqld.cnf o my.cnf
+
+[mysqld]
+# Configuración básica
+server-id = 1
+log-bin = mysql-bin
+binlog-format = ROW
+expire_logs_days = 7
+max_binlog_size = 100M
+
+# Configuración de replicación
+bind-address = 0.0.0.0
+port = 3306
+
+# Configuración de rendimiento
+innodb_buffer_pool_size = 1G
+innodb_log_file_size = 256M
+innodb_flush_log_at_trx_commit = 1
+sync_binlog = 1
+
+# Configuración de conexiones
+max_connections = 1000
+max_connect_errors = 100000
+
+# Configuración de seguridad
+skip_name_resolve = 1
+
+# Configuración de charset
+character-set-server = utf8mb4
+collation-server = utf8mb4_unicode_ci
+
+# Configuración de logs
+general_log = 1
+general_log_file = /var/log/mysql/mysql.log
+slow_query_log = 1
+slow_query_log_file = /var/log/mysql/mysql-slow.log
+long_query_time = 2
+
+# Configuración de binary logs para replicación
+binlog_do_db = aviator_game
+replicate_do_db = aviator_game
+
+# GTIDs para mejor manejo de replicación
+gtid_mode = ON
+enforce_gtid_consistency = ON
