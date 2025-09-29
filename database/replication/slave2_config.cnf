@@ -1,0 +1,59 @@
+# Configuración MySQL Slave 2 (Esclavo 2)
+# Archivo: /etc/mysql/mysql.conf.d/mysqld.cnf o my.cnf
+
+[mysqld]
+# Configuración básica
+server-id = 3  # IMPORTANTE: Debe ser único para cada esclavo
+log-bin = mysql-bin-slave2
+binlog-format = ROW
+expire_logs_days = 7
+max_binlog_size = 100M
+
+# Configuración de replicación
+bind-address = 0.0.0.0
+port = 3306
+
+# Configuración específica de slave
+relay-log = relay-log-slave2
+relay-log-index = relay-log-slave2.index
+read_only = 1  # Solo lectura para esclavos
+super_read_only = 1
+
+# Configuración de rendimiento
+innodb_buffer_pool_size = 1G
+innodb_log_file_size = 256M
+innodb_flush_log_at_trx_commit = 2  # Menos estricto para esclavos
+sync_binlog = 0
+
+# Configuración de conexiones
+max_connections = 1000
+max_connect_errors = 100000
+
+# Configuración de seguridad
+skip_name_resolve = 1
+
+# Configuración de charset
+character-set-server = utf8mb4
+collation-server = utf8mb4_unicode_ci
+
+# Configuración de logs
+general_log = 1
+general_log_file = /var/log/mysql/mysql-slave2.log
+slow_query_log = 1
+slow_query_log_file = /var/log/mysql/mysql-slow-slave2.log
+long_query_time = 2
+
+# Configuración de binary logs para replicación
+replicate_do_db = aviator_game
+
+# GTIDs para mejor manejo de replicación
+gtid_mode = ON
+enforce_gtid_consistency = ON
+
+# Configuración de relay log
+relay_log_recovery = ON
+relay_log_info_repository = TABLE
+master_info_repository = TABLE
+
+# Skip problemas comunes
+slave_skip_errors = 1062,1032
