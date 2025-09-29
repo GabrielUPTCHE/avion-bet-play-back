@@ -1,3 +1,6 @@
+
+
+// tener enc uenta que el id es el del socket, por lo tanto es temporal, no debe asociarse al player sino al game session
 export interface Player {
     id_player: string | null;
     username: string | null;
@@ -40,6 +43,6 @@ export interface Bet {
     date_bet: string;
     ganancy: number | null;
     multiplyer: number | null;
-
+    is_active?: boolean;
 }
 
