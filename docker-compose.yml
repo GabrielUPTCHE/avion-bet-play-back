@@ -1,83 +1,136 @@
 version: '3.8'
 
 services:
-  mysql-master:
-    image: mysql:8.0
-    container_name: aviator-mysql-master
+  # ===== BALANCEADOR DE CARGA CON NGINX =====
+  nginx-load-balancer:
+    image: nginx:alpine
+    container_name: aviator-nginx-lb
     restart: unless-stopped
-    environment:
-      MYSQL_ROOT_PASSWORD: RootPassword123!
-      MYSQL_DATABASE: aviator_game
-      MYSQL_USER: aviator_app
-      MYSQL_PASSWORD: AppPassword123!
     ports:
-      - "3308:3306"
+      - "80:80"      # Puerto principal de la aplicación
+      - "8081:80"    # Puerto alternativo para acceso directo
     volumes:
-      - ./mysql-data/master:/var/lib/mysql
-      - ./mysql-logs/master:/var/log/mysql
-      - ./database/replication/master_config.cnf:/etc/mysql/conf.d/mysql.cnf:ro
-      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
-      - ./database/replication/setup_master.sql:/docker-entrypoint-initdb.d/02-setup.sql:ro
-    networks:
-      aviator-network:
-        ipv4_address: 192.168.100.10
-    command: --server-id=1 --log-bin=mysql-bin --gtid_mode=ON --enforce_gtid_consistency=ON
-
-  mysql-slave1:
-    image: mysql:8.0
-    container_name: aviator-mysql-slave1
-    restart: unless-stopped
-    environment:
-      MYSQL_ROOT_PASSWORD: RootPassword123!
-    ports:
-      - "3307:3306"
-    volumes:
-      - ./mysql-data/slave1:/var/lib/mysql
-      - ./mysql-logs/slave1:/var/log/mysql
-      - ./database/replication/slave1_config.cnf:/etc/mysql/conf.d/mysql.cnf:ro
-    networks:
-      aviator-network:
-        ipv4_address: 192.168.100.11
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
-      - mysql-master
-    command: --server-id=2 --log-bin=mysql-bin --gtid_mode=ON --enforce_gtid_consistency=ON --read_only=1
-
-  mysql-slave2:
-    image: mysql:8.0
-    container_name: aviator-mysql-slave2
-    restart: unless-stopped
-    environment:
-      MYSQL_ROOT_PASSWORD: RootPassword123!
-    ports:
-      - "3309:3306"
-    volumes:
-      - ./mysql-data/slave2:/var/lib/mysql
-      - ./mysql-logs/slave2:/var/log/mysql
-      - ./database/replication/slave2_config.cnf:/etc/mysql/conf.d/mysql.cnf:ro
-    networks:
-      aviator-network:
-        ipv4_address: 192.168.100.12
-    depends_on:
-      - mysql-master
-    command: --server-id=3 --log-bin=mysql-bin --gtid_mode=ON --enforce_gtid_consistency=ON --read_only=1
-
-  phpmyadmin:
-    image: phpmyadmin/phpmyadmin
-    container_name: aviator-phpmyadmin
-    restart: unless-stopped
-    environment:
-      PMA_HOSTS: mysql-master,mysql-slave1,mysql-slave2
-      PMA_PORTS: 3306,3306,3306
-      PMA_USER: aviator_app
-      PMA_PASSWORD: AppPassword123!
-    ports:
-      - "8080:80"
-    depends_on:
-      - mysql-master
-      - mysql-slave1
-      - mysql-slave2
+      - aviator-backend-1
+      - aviator-backend-2
+      - aviator-backend-3
     networks:
       - aviator-network
+
+  # ===== INSTANCIAS DEL BACKEND =====
+  aviator-backend-1:
+    build: .
+    container_name: aviator-backend-1
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=4000
+      - INSTANCE_ID=backend-1
+    networks:
+      - aviator-network
+    # Nota: No exponemos puertos directamente, solo a través del load balancer
+
+  aviator-backend-2:
+    build: .
+    container_name: aviator-backend-2
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=4000
+      - INSTANCE_ID=backend-2
+    networks:
+      - aviator-network
+
+  aviator-backend-3:
+    build: .
+    container_name: aviator-backend-3
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=4000
+      - INSTANCE_ID=backend-3
+    networks:
+      - aviator-network
+
+  # ===== BASES DE DATOS (COMENTADAS TEMPORALMENTE) =====
+  # mysql-master:
+  #   image: mysql:8.0
+  #   container_name: aviator-mysql-master
+  #   restart: unless-stopped
+  #   environment:
+  #     MYSQL_ROOT_PASSWORD: RootPassword123!
+  #     MYSQL_DATABASE: aviator_game
+  #     MYSQL_USER: aviator_app
+  #     MYSQL_PASSWORD: AppPassword123!
+  #   ports:
+  #     - "3308:3306"
+  #   volumes:
+  #     - ./mysql-data/master:/var/lib/mysql
+  #     - ./mysql-logs/master:/var/log/mysql
+  #     - ./database/replication/master_config.cnf:/etc/mysql/conf.d/mysql.cnf:ro
+  #     - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+  #     - ./database/replication/setup_master.sql:/docker-entrypoint-initdb.d/02-setup.sql:ro
+  #   networks:
+  #     aviator-network:
+  #       ipv4_address: 192.168.100.10
+  #   command: --server-id=1 --log-bin=mysql-bin --gtid_mode=ON --enforce_gtid_consistency=ON
+
+  # mysql-slave1:
+  #   image: mysql:8.0
+  #   container_name: aviator-mysql-slave1
+  #   restart: unless-stopped
+  #   environment:
+  #     MYSQL_ROOT_PASSWORD: RootPassword123!
+  #   ports:
+  #     - "3307:3306"
+  #   volumes:
+  #     - ./mysql-data/slave1:/var/lib/mysql
+  #     - ./mysql-logs/slave1:/var/log/mysql
+  #     - ./database/replication/slave1_config.cnf:/etc/mysql/conf.d/mysql.cnf:ro
+  #   networks:
+  #     aviator-network:
+  #       ipv4_address: 192.168.100.11
+  #   depends_on:
+  #     - mysql-master
+  #   command: --server-id=2 --log-bin=mysql-bin --gtid_mode=ON --enforce_gtid_consistency=ON --read_only=1
+
+  # mysql-slave2:
+  #   image: mysql:8.0
+  #   container_name: aviator-mysql-slave2
+  #   restart: unless-stopped
+  #   environment:
+  #     MYSQL_ROOT_PASSWORD: RootPassword123!
+  #   ports:
+  #     - "3309:3306"
+  #   volumes:
+  #     - ./mysql-data/slave2:/var/lib/mysql
+  #     - ./mysql-logs/slave2:/var/log/mysql
+  #     - ./database/replication/slave2_config.cnf:/etc/mysql/conf.d/mysql.cnf:ro
+  #   networks:
+  #     aviator-network:
+  #       ipv4_address: 192.168.100.12
+  #   depends_on:
+  #     - mysql-master
+  #   command: --server-id=3 --log-bin=mysql-bin --gtid_mode=ON --enforce_gtid_consistency=ON --read_only=1
+
+  # phpmyadmin:
+  #   image: phpmyadmin/phpmyadmin
+  #   container_name: aviator-phpmyadmin
+  #   restart: unless-stopped
+  #   environment:
+  #     PMA_HOSTS: mysql-master,mysql-slave1,mysql-slave2
+  #     PMA_PORTS: 3306,3306,3306
+  #     PMA_USER: aviator_app
+  #     PMA_PASSWORD: AppPassword123!
+  #   ports:
+  #     - "8080:80"
+  #   depends_on:
+  #     - mysql-master
+  #     - mysql-slave1
+  #     - mysql-slave2
+  #   networks:
+  #     - aviator-network
 
 networks:
   aviator-network:

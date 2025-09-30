@@ -6,6 +6,12 @@ const cors = require("cors");
 const { addPlayer, getPlayers, addBetToCurrentRound, getGameHall, cancelBet, setRoundStatusHall, getRoundStatusHall } = require("./services/game-service.ts");
 const { generateRoundService } = require("./services/aviator-service.ts")
 
+// Identificador de la instancia para logs
+const INSTANCE_ID = process.env.INSTANCE_ID || `backend-${Math.random().toString(36).substr(2, 9)}`;
+const PORT = process.env.PORT || 4000;
+
+console.log(`🚀 Iniciando instancia: ${INSTANCE_ID}`);
+
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -98,6 +104,16 @@ function modifyRound(io, newState, newTimeSec, isBetTime, title) {
 
 
 
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'ok', 
+    instance: INSTANCE_ID,
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
+});
+
 // Obtener IP del cliente
 function getClientIp(socket) {
   const forwarded = socket.handshake.headers["x-forwarded-for"];
@@ -106,12 +122,12 @@ function getClientIp(socket) {
 
 io.on("connection", (socket) => {
   const clientIp = getClientIp(socket);
-  console.log(`✅ Cliente conectado: ${socket.id} desde IP ${clientIp}`);
+  console.log(`✅ [${INSTANCE_ID}] Cliente conectado: ${socket.id} desde IP ${clientIp}`);
 
   socket.on("join_game", (playerData) => {
     const { username, register_date } = playerData;
     addPlayer({ id_player: socket.id, username, register_date });
-    console.log(`🎮 Jugador ${playerData.username} (${socket.id}) se unió`);
+    console.log(`🎮 [${INSTANCE_ID}] Jugador ${playerData.username} (${socket.id}) se unió`);
     console.log('se emite para el update los players:', getPlayers())
     io.emit("players_update", getPlayers());
     io.emit("bets_update", getGameHall(0));
@@ -122,17 +138,15 @@ io.on("connection", (socket) => {
 
 
   socket.on("disconnect", (reason) => {
-    console.log(`⚠️ Cliente ${socket.id} desconectado (${reason})`);
-
+    console.log(`⚠️ [${INSTANCE_ID}] Cliente ${socket.id} desconectado (${reason})`);
   });
-
 
   socket.on("new_bet", (newBet) => {
     const { id, amount } = newBet;
     const result = addBetToCurrentRound(id, amount);
-    console.log('recibiendo apuesta', newBet, 'resultado:', result);
+    console.log(`[${INSTANCE_ID}] recibiendo apuesta`, newBet, 'resultado:', result);
     if (result) {
-      console.log(`💰 Apuesta recibida de ${id}: $${amount}`);
+      console.log(`💰 [${INSTANCE_ID}] Apuesta recibida de ${id}: $${amount}`);
       console.log('estado del juego:', getGameHall(0));
       io.emit("bets_update", getGameHall(0));
     }
@@ -141,9 +155,9 @@ io.on("connection", (socket) => {
   socket.on("cancel_bet", (result) => {
     const { id_player } = result;
     const deletedBet = cancelBet(id_player);
-    console.log('cancelando apuesta ...', deletedBet);
+    console.log(`[${INSTANCE_ID}] cancelando apuesta ...`, deletedBet);
     if (deletedBet) {
-      console.log(`💰 Apuesta cancelada de ${id_player}`);
+      console.log(`💰 [${INSTANCE_ID}] Apuesta cancelada de ${id_player}`);
       console.log('estado del juego:', getGameHall(0).game_rounds[0].bets);
       io.emit("bets_update", getGameHall(0));
     }
@@ -156,6 +170,7 @@ io.on("connection", (socket) => {
 
 
 
-server.listen(4000, () => {
-  console.log("🚀 Servidor corriendo en http://localhost:4000");
+server.listen(PORT, () => {
+  console.log(`🚀 [${INSTANCE_ID}] Servidor corriendo en puerto ${PORT}`);
+  console.log(`📊 [${INSTANCE_ID}] Health check disponible en /health`);
 });
