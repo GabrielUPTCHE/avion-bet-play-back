@@ -3,7 +3,7 @@ const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
 const cors = require("cors");
-const { addPlayer, getPlayers, addBetToCurrentRound, getGameHall, cancelBet, setRoundStatusHall, getRoundStatusHall } = require("./services/game-service.ts");
+const {getPlayers,removePlayerFromSessions ,addSessionPlayer, getSessionPlayers, addBetToCurrentRound, getGameHall, cancelBet, setRoundStatusHall, getRoundStatusHall } = require("./services/game-service.ts");
 const { generateRoundService } = require("./services/aviator-service.ts")
 
 const app = express();
@@ -100,16 +100,35 @@ function getClientIp(socket) {
   return forwarded ? forwarded.split(",")[0] : socket.handshake.address;
 }
 
+app.post("/api/validate-user", (req, res) => {
+  const { username } = req.body;
+
+  if (!username || username.trim() === "") {
+    return res.status(400).json({ success: false, message: "Falta el username" });
+  }
+
+  const players = getPlayers();
+  const exists = players.some(
+    (p) => p.username.toLowerCase() === username.toLowerCase()
+  );
+
+  if (exists) {
+    return res.json({ success: true });
+  } else {
+    return res.json({ success: false });
+  }
+});
+
 io.on("connection", (socket) => {
   const clientIp = getClientIp(socket);
   console.log(`✅ Cliente conectado: ${socket.id} desde IP ${clientIp}`);
 
   socket.on("join_game", (playerData) => {
     const { username, register_date } = playerData;
-    addPlayer({ id_player: socket.id, username, register_date });
+    addSessionPlayer({ id_player: socket.id, username, register_date });
     console.log(`🎮 Jugador ${playerData.username} (${socket.id}) se unió`);
-    console.log('se emite para el update los players:', getPlayers())
-    io.emit("players_update", getPlayers());
+    console.log('se emite para el update los players:', getSessionPlayers())
+    io.emit("players_update", getSessionPlayers());
     io.emit("bets_update", getGameHall(0));
     if (!gameInterval) {
       startCountdownRound(io);
@@ -119,7 +138,7 @@ io.on("connection", (socket) => {
 
   socket.on("disconnect", (reason) => {
     console.log(`⚠️ Cliente ${socket.id} desconectado (${reason})`);
-
+    removePlayerFromSessions(socket.id)
   });
 
 
