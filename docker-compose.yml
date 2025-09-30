@@ -18,6 +18,19 @@ services:
     networks:
       - aviator-network
 
+  # ===== REDIS PARA ESTADO CENTRALIZADO =====
+  redis-server:
+    image: redis:7-alpine
+    container_name: aviator-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"  # Puerto para desarrollo/debug
+    volumes:
+      - redis-data:/data
+    networks:
+      - aviator-network
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+
   # ===== INSTANCIAS DEL BACKEND =====
   aviator-backend-1:
     build: .
@@ -27,6 +40,9 @@ services:
       - NODE_ENV=production
       - PORT=4000
       - INSTANCE_ID=backend-1
+      - REDIS_URL=redis://redis-server:6379
+    depends_on:
+      - redis-server
     networks:
       - aviator-network
     # Nota: No exponemos puertos directamente, solo a través del load balancer
@@ -39,6 +55,9 @@ services:
       - NODE_ENV=production
       - PORT=4000
       - INSTANCE_ID=backend-2
+      - REDIS_URL=redis://redis-server:6379
+    depends_on:
+      - redis-server
     networks:
       - aviator-network
 
@@ -50,6 +69,9 @@ services:
       - NODE_ENV=production
       - PORT=4000
       - INSTANCE_ID=backend-3
+      - REDIS_URL=redis://redis-server:6379
+    depends_on:
+      - redis-server
     networks:
       - aviator-network
 
@@ -143,3 +165,4 @@ volumes:
   master-data:
   slave1-data:
   slave2-data:
+  redis-data:
