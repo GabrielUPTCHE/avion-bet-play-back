@@ -9,6 +9,7 @@ export interface Player {
 
 export interface GameSession {
     player: Player;
+    id_game_session:string;
     date_ingress: string;
     date_exit: string | null;
 }   

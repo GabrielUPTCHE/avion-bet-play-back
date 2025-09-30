@@ -112,11 +112,11 @@ export function addSessionToHall(player: any) {
 }
 
 export function addBetToCurrentRound(playerId: string, amount: number) {
-    const player = players?.find((p) => {
-        return p.id_player === playerId
-    });
+    const player = players?.find(p => p.id_player === playerId);
+    console.log('el player', player)
     if (!player) return null;   
-    const currentRound = gameHalls[0].game_rounds.find(r => r.state === "in_progress");
+    console.log('el playerrrrr', player)
+    const currentRound = gameHalls[0].game_rounds[0]
     if (!currentRound) return null;   
     currentRound.bets.push({
         id_bet: (currentRound.bets.length + 1).toString(),
@@ -132,7 +132,7 @@ export function addBetToCurrentRound(playerId: string, amount: number) {
 }
 
 export function cancelBet(playerId: string) {
-    const currentRound = gameHalls[0].game_rounds.find(r => r.state === "in_progress");
+    const currentRound = gameHalls[0].game_rounds[0];
     if (!currentRound) return null;
     const bet = currentRound.bets.find(b => b.player.id_player === playerId && b.is_active);
     if (!bet) return null;
@@ -143,7 +143,7 @@ export function cancelBet(playerId: string) {
 }
 
 export function deleteBetFromPlayer() {
-    const currentRound = gameHalls[0].game_rounds.find(r => r.state === "in_progress");
+    const currentRound = gameHalls[0].game_rounds[0];
     if (!currentRound) return null;
     currentRound.bets = currentRound.bets.filter(b => !b.is_active);
     return currentRound.bets;   

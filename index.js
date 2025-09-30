@@ -4,12 +4,14 @@ const http = require("http");
 const { Server } = require("socket.io");
 const cors = require("cors");
 const { addPlayer, getPlayers, addBetToCurrentRound, getGameHall, cancelBet, setRoundStatusHall, getRoundStatusHall } = require("./services/game-service.ts");
+const { generateRoundService } = require("./services/aviator-service.ts")
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 const server = http.createServer(app);
+
 
 const io = new Server(server, {
   cors: {
@@ -18,37 +20,80 @@ const io = new Server(server, {
   }
 });
 
-let countdown = 10; // 60 segundos
+let countdown = 10;
+let gameInterval;
+let aviatorInterval
+let isRunning = false
+let multiplier = 1
 
 function startCountdownRound(io) {
-  const interval = setInterval(() => {
-    if (countdown > 0) {
-      console.log(`⏳ Tiempo restante: ${countdown}s`);
+  gameInterval = setInterval(() => {
+    if (countdown >= 0) {
       io.emit("tick", { secondsLeft: countdown });
       countdown--;
     } else {
-      console.log("🚀 ¡Ronda iniciada!");
-      io.emit("round_start", { message: "La ronda ha comenzado!" });
-      if (getRoundStatusHall(0,0) === 'not_initied') {
-        modifyRound(io,'in_progress', 30, false, 'Ronda en progreso' )
-      }
-      if(getRoundStatusHall(0,0) === 'in_progress'){
-        modifyRound(io,'finished', 10, false, 'La ronda ha finalizado' )
-      }
-      if(getRoundStatusHall(0,0) === 'finished'){
-        modifyRound(io,'finished', 10, true, 'Prepara tu apuesta' )
-      }
-      // aquí podrías iniciar la lógica de la ronda (ej: crecimiento del avión)
+      selectStateRound();
     }
   }, 1000);
 }
 
-function modifyRound(io,newState, newTimeSec, isBetTime, title) {
-  setRoundStatusHall(0,0,newState)
+function startAviatorSimulate(io) {
+  if (isRunning) return;
+  isRunning = true;
+  multiplier = 1.0;
+  const crashPoint = parseFloat((Math.random() * 15 + 1.1).toFixed(2));
+
+  io.emit("round_start");
+
+  aviatorInterval = setInterval(() => {
+    if (multiplier >= crashPoint) {
+      endRound(io);
+    } else {
+      multiplier += 0.1;
+      //se elimina, solo se envia cuando termina
+      io.emit("plane_update", {
+        multiplier: parseFloat(multiplier.toFixed(2)),
+        timestamp: Date.now(),
+      });
+    }
+  }, 100);
+}
+
+function endRound(io) {
+  if (!isRunning) return;
+  isRunning = false;
+
+  if (aviatorInterval) {
+    clearInterval(aviatorInterval);
+    aviatorInterval = null;
+  }
+
+  modifyRound(io, 'finished', 5, false, 'La ronda ha finalizado')
+  io.emit("round_end", { finalMultiplier: multiplier.toFixed(2) });
+  startCountdownRound(io)
+}
+
+function selectStateRound() {
+  switch (getRoundStatusHall(0, 0)) {
+    case 'not_initied':
+      modifyRound(io, 'in_progress', 0, false, 'Ronda en progreso')
+      clearInterval(gameInterval)
+      startAviatorSimulate(io)
+      break;
+    case 'finished':
+      modifyRound(io, 'not_initied', 10, true, 'Prepara tu apuesta')
+      break;
+    default:
+      break;
+  }
+}
+
+function modifyRound(io, newState, newTimeSec, isBetTime, title) {
+  setRoundStatusHall(0, 0, newState)
   countdown = newTimeSec;
   io.emit("update_round_state",
-          {newState,isBetTime,title}
-        );
+    { newState, isBetTime, title }
+  );
 }
 
 
@@ -70,14 +115,15 @@ io.on("connection", (socket) => {
     console.log('se emite para el update los players:', getPlayers())
     io.emit("players_update", getPlayers());
     io.emit("bets_update", getGameHall(0));
-    startCountdownRound(io);
+    if (!gameInterval) {
+      startCountdownRound(io);
+    }
   });
 
 
   socket.on("disconnect", (reason) => {
     console.log(`⚠️ Cliente ${socket.id} desconectado (${reason})`);
 
-    //io.emit("players_update", Array.from(players.values()));
   });
 
 
@@ -93,8 +139,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("cancel_bet", (result) => {
-    console.log('')
-    const { id_player} = result;
+    const { id_player } = result;
     const deletedBet = cancelBet(id_player);
     console.log('cancelando apuesta ...', deletedBet);
     if (deletedBet) {
@@ -103,7 +148,7 @@ io.on("connection", (socket) => {
       io.emit("bets_update", getGameHall(0));
     }
   });
-  
+
 });
 
 
@@ -114,4 +159,3 @@ io.on("connection", (socket) => {
 server.listen(4000, () => {
   console.log("🚀 Servidor corriendo en http://localhost:4000");
 });
-  
