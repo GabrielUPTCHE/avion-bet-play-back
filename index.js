@@ -43,14 +43,18 @@ function startAviatorSimulate(io) {
   multiplier = 1.0;
   const crashPoint = parseFloat((Math.random() * 15 + 1.1).toFixed(2));
 
-  io.emit("round_start");
+  // Envía señal de inicio con los datos necesarios para que el front calcule
+  io.emit("round_start", {
+    initialMultiplier: 1.0,
+    incrementInterval: 100, // milisegundos entre cada incremento
+    incrementAmount: 0.1    // cuánto aumenta en cada paso
+  });
 
   aviatorInterval = setInterval(() => {
+    multiplier += 0.1;
+    // Solo verifica si alcanzó el punto de quiebre
     if (multiplier >= crashPoint) {
       endRound(io);
-    } else {
-      multiplier += 0.1;
-      //se elimina, solo se envia cuando termina
     }
   }, 100);
 }
@@ -64,8 +68,12 @@ function endRound(io) {
     aviatorInterval = null;
   }
 
+  // Envía el multiplicador final cuando termina
   modifyRound(io, 'finished', 5, false, 'La ronda ha finalizado')
-  io.emit("round_end", { finalMultiplier: multiplier.toFixed(2) });
+  io.emit("round_end", { 
+    finalMultiplier: multiplier.toFixed(2),
+    timestamp: Date.now()
+  });
   startCountdownRound(io)
 }
 
