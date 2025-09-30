@@ -51,10 +51,6 @@ function startAviatorSimulate(io) {
     } else {
       multiplier += 0.1;
       //se elimina, solo se envia cuando termina
-      io.emit("plane_update", {
-        multiplier: parseFloat(multiplier.toFixed(2)),
-        timestamp: Date.now(),
-      });
     }
   }, 100);
 }
