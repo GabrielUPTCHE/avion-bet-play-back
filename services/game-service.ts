@@ -5,6 +5,7 @@ export interface Player {
 }
 
 export interface GameSession {
+    id_session: string | null ;
     player: Player;
     date_ingress: string;
     date_exit: string | null;
@@ -44,7 +45,23 @@ export interface Bet {
 }
 
 
-let players:Player[]  = [];
+let players:Player[]  = [
+    {
+        id_player: '1',
+        username: 'Gabriel',
+        register_date: null
+    },
+      {
+        id_player: '2',
+        username: 'Deivid',
+        register_date: null
+    },
+      {
+        id_player: '3',
+        username: 'Edinson',
+        register_date: null
+    },
+];
 let gameHalls:GameHall[] = [
     {
         id_game_hall: '1',
@@ -91,14 +108,33 @@ let gameHallsHistorical:GameHall[] = [
 
 
 // tener en cuenta que el id es el del socket, por lo tanto es temporal, no debe asociarse al player sino al game session
-export function addPlayer(player: Player) {
-    console.log('agregando jugador', player);
-    players.push(player);
+export function addSessionPlayer(player: Player) {
+    gameHalls[0].game_sessions.push(
+        {   
+            date_ingress: new Date().toString(),
+            date_exit: null,
+            player: player,
+            id_session: player.id_player
+        }
+    )
     return player;
 }   
 export function getPlayers() {
     return players;
 }   
+
+export function getSessionPlayers() {
+    return gameHalls[0].game_sessions;
+}
+
+export function removePlayerFromSessions(id_socket: string) {
+  gameHalls.forEach((hall) => {
+    hall.game_sessions = hall.game_sessions.filter(
+      (session) => session.id_session !== id_socket
+    );
+    hall.actual_players = hall.game_sessions.length;
+  });
+}
 
 export function addSessionToHall(player: any) {
     const session:any = {
