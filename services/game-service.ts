@@ -1,4 +1,3 @@
-
 export interface Player {
     id_player: string | null;
     username: string | null;
@@ -6,6 +5,7 @@ export interface Player {
 }
 
 export interface GameSession {
+    id_session: string | null ;
     player: Player;
     date_ingress: string;
     date_exit: string | null;
@@ -45,7 +45,23 @@ export interface Bet {
 }
 
 
-let players:Player[]  = [];
+let players:Player[]  = [
+    {
+        id_player: '1',
+        username: 'Gabriel',
+        register_date: null
+    },
+      {
+        id_player: '2',
+        username: 'Deivid',
+        register_date: null
+    },
+      {
+        id_player: '3',
+        username: 'Edinson',
+        register_date: null
+    },
+];
 let gameHalls:GameHall[] = [
     {
         id_game_hall: '1',
@@ -92,14 +108,33 @@ let gameHallsHistorical:GameHall[] = [
 
 
 // tener en cuenta que el id es el del socket, por lo tanto es temporal, no debe asociarse al player sino al game session
-export function addPlayer(player: Player) {
-    console.log('agregando jugador', player);
-    players.push(player);
+export function addSessionPlayer(player: Player) {
+    gameHalls[0].game_sessions.push(
+        {   
+            date_ingress: new Date().toString(),
+            date_exit: null,
+            player: player,
+            id_session: player.id_player
+        }
+    )
     return player;
 }   
 export function getPlayers() {
     return players;
 }   
+
+export function getSessionPlayers() {
+    return gameHalls[0].game_sessions;
+}
+
+export function removePlayerFromSessions(id_socket: string) {
+  gameHalls.forEach((hall) => {
+    hall.game_sessions = hall.game_sessions.filter(
+      (session) => session.id_session !== id_socket
+    );
+    hall.actual_players = hall.game_sessions.length;
+  });
+}
 
 export function addSessionToHall(player: any) {
     const session:any = {
@@ -131,14 +166,31 @@ export function addBetToCurrentRound(playerId: string, amount: number) {
     return player;
 }
 
-export function cancelBet(playerId: string) {
-    const currentRound = gameHalls[0].game_rounds[0];
+export function cancelBet(playerId: string, currentMultiplier: number) {
+    // Encuentra la ronda actual
+    const currentRound = getGameHall(0).game_rounds[0];
     if (!currentRound) return null;
-    const bet = currentRound.bets.find(b => b.player.id_player === playerId && b.is_active);
-    if (!bet) return null;
+
+    // Encuentra la apuesta del jugador con tipo explícito
+    const betIndex = currentRound.bets.findIndex(
+        (bet: Bet) => bet.player.id_player === playerId && bet.is_active
+    );
+
+    if (betIndex === -1) return null;
+
+    const bet = currentRound.bets[betIndex];
+    
+    // Si la ronda está en progreso, calcula la ganancia
+    if (currentRound.state === 'in_progress') {
+        bet.ganancy = bet.amount * currentMultiplier;
+        bet.multiplyer = currentMultiplier;
+    } else {
+        // Si la ronda no está en progreso o ya terminó, no hay ganancia
+        bet.ganancy = 0;
+        bet.multiplyer = null;
+    }
+
     bet.is_active = false;
-    gameHallsHistorical = JSON.parse(JSON.stringify(gameHalls));
-    gameHalls[0].game_rounds[0].bets = gameHalls[0].game_rounds[0].bets.filter(bet => bet.is_active);
     return bet;
 }
 
