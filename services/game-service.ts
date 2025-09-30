@@ -1,4 +1,3 @@
-
 export interface Player {
     id_player: string | null;
     username: string | null;
@@ -131,14 +130,31 @@ export function addBetToCurrentRound(playerId: string, amount: number) {
     return player;
 }
 
-export function cancelBet(playerId: string) {
-    const currentRound = gameHalls[0].game_rounds[0];
+export function cancelBet(playerId: string, currentMultiplier: number) {
+    // Encuentra la ronda actual
+    const currentRound = getGameHall(0).game_rounds[0];
     if (!currentRound) return null;
-    const bet = currentRound.bets.find(b => b.player.id_player === playerId && b.is_active);
-    if (!bet) return null;
+
+    // Encuentra la apuesta del jugador con tipo explícito
+    const betIndex = currentRound.bets.findIndex(
+        (bet: Bet) => bet.player.id_player === playerId && bet.is_active
+    );
+
+    if (betIndex === -1) return null;
+
+    const bet = currentRound.bets[betIndex];
+    
+    // Si la ronda está en progreso, calcula la ganancia
+    if (currentRound.state === 'in_progress') {
+        bet.ganancy = bet.amount * currentMultiplier;
+        bet.multiplyer = currentMultiplier;
+    } else {
+        // Si la ronda no está en progreso o ya terminó, no hay ganancia
+        bet.ganancy = 0;
+        bet.multiplyer = null;
+    }
+
     bet.is_active = false;
-    gameHallsHistorical = JSON.parse(JSON.stringify(gameHalls));
-    gameHalls[0].game_rounds[0].bets = gameHalls[0].game_rounds[0].bets.filter(bet => bet.is_active);
     return bet;
 }
 

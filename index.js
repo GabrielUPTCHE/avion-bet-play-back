@@ -144,10 +144,12 @@ io.on("connection", (socket) => {
 
   socket.on("cancel_bet", (result) => {
     const { id_player } = result;
-    const deletedBet = cancelBet(id_player);
+    // Pasamos el multiplicador actual para calcular la ganancia
+    const deletedBet = cancelBet(id_player, multiplier);
     console.log('cancelando apuesta ...', deletedBet);
     if (deletedBet) {
-      console.log(`💰 Apuesta cancelada de ${id_player}`);
+      // La ganancia ya vendrá calculada desde cancelBet
+      console.log(`💰 Apuesta cancelada de ${id_player} con ganancia: $${deletedBet.ganancy}`);
       console.log('estado del juego:', getGameHall(0).game_rounds[0].bets);
       io.emit("bets_update", getGameHall(0));
     }
