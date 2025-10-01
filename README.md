@@ -1,212 +1,223 @@
-# 🎮 Aviator Game - Backend con MySQL Replicación
+# Aviator Game - Sistema Distribuido Backend
 
-Backend del juego de apuestas Aviator con sistema de base de datos MySQL distribuida (1 Master + 2 Slaves).
+Backend del juego de apuestas Aviator con arquitectura distribuida que incluye balanceador de carga, múltiples instancias de backend, Redis para estado centralizado y MongoDB con replicación Master-Slave.
 
-## 🚀 Deploy Rápido con Docker
+## Arquitectura del Sistema
 
-### 1. Clonar y preparar
+El sistema está compuesto por las siguientes capas:
+
+- **Balanceador de Carga**: NGINX con algoritmo least_conn para HTTP y ip_hash para WebSockets
+- **Backend Distribuido**: 3 instancias de Node.js + TypeScript con Express.js y Socket.IO
+- **Estado Centralizado**: Redis 7 con persistencia AOF para sincronización entre instancias
+- **Base de Datos**: MongoDB Replica Set (1 Primary + 2 Secondary) para alta disponibilidad
+- **Monitoreo**: Mongo Express para administración de base de datos
+
+## Requisitos Previos
+
+- Docker y Docker Compose instalados
+- Puertos disponibles: 80, 8080, 6379, 27017, 27018, 27019, 8081
+- Mínimo 4GB RAM disponible para contenedores
+
+## Despliegue Completo del Sistema
+
+### 1. Preparación del Entorno
+
 ```bash
+# Clonar el repositorio
 git clone https://github.com/GabrielUPTCHE/avion-bet-play-back.git
 cd avion-bet-play-back
+
+# Crear red Docker para el proyecto
+docker network create aviator-network
 ```
 
-### 2. Desplegar MySQL con replicación
+### 2. Desplegar Base de Datos MongoDB (Replica Set)
+
 ```bash
-# Hacer ejecutable el script
-chmod +x deploy_mysql_replication.sh
+# Iniciar el cluster de MongoDB con 1 Primary + 2 Secondary
+docker-compose -f docker-compose.mongodb.yml up -d
 
-# Desplegar infraestructura completa
-./deploy_mysql_replication.sh
+# Verificar que los contenedores estén ejecutándose
+docker-compose -f docker-compose.mongodb.yml ps
+
+# Ver logs de inicialización
+docker-compose -f docker-compose.mongodb.yml logs -f mongodb-primary
 ```
 
-### 3. Validar la replicación
+### 3. Configurar Replica Set de MongoDB
+
 ```bash
-# Verificar que todo funcione correctamente
-chmod +x validate_replication.sh
-./validate_replication.sh
+# Conectar al MongoDB Primary para configurar el replica set
+docker exec -it mongodb-primary mongosh
+
+# Dentro de mongosh, ejecutar:
+rs.initiate({
+  _id: "aviator-replica",
+  members: [
+    { _id: 0, host: "mongodb-primary:27017", priority: 1 },
+    { _id: 1, host: "mongodb-secondary1:27017", priority: 1 },
+    { _id: 2, host: "mongodb-secondary2:27017", priority: 1 }
+  ]
+})
+
+# Verificar el estado del replica set
+rs.status()
+
+# Salir de mongosh
+exit
 ```
 
-### 4. Instalar dependencias y configurar
+### 4. Desplegar Backend con Balanceador de Carga
+
 ```bash
-npm install
-node scripts/setup_database.js setup
+# Construir las imágenes de los backends
+docker-compose build
+
+# Iniciar todos los servicios (Redis + 3 Backends + NGINX)
+docker-compose up -d
+
+# Verificar que todos los contenedores estén ejecutándose
+docker-compose ps
 ```
 
-### 5. Iniciar el servidor
+### 5. Verificar el Estado del Sistema
+
 ```bash
-npm start
+# Verificar logs de todos los servicios
+docker-compose logs -f
+
+# Verificar logs específicos del balanceador de carga
+docker-compose logs nginx-load-balancer
+
+# Verificar logs de las instancias backend
+docker-compose logs aviator-backend-1
+docker-compose logs aviator-backend-2  
+docker-compose logs aviator-backend-3
+
+# Verificar conexión a Redis
+docker exec -it aviator-redis redis-cli ping
 ```
 
-## 🏗️ Arquitectura del Sistema
-
-```
-🎮 Cliente (Frontend)
-    ↕️ WebSocket
-📡 Node.js + Socket.io (Puerto 4000)
-    ↕️ Connection Pool
-🔄 Load Balancer Automático
-    ↕️
-🗄️ MySQL Master (Puerto 3306) ← Escritura
-    ↓ Replicación Binlog + GTID
-🗄️ MySQL Slave 1 (Puerto 3307) ← Lectura
-🗄️ MySQL Slave 2 (Puerto 3309) ← Lectura
-```
-
-## 📊 Servicios Desplegados
-
-| Servicio | Puerto | Credenciales | Uso |
-|----------|--------|--------------|-----|
-| **MySQL Master** | 3306 | `aviator_app` / `AppPassword123!` | Escritura |
-| **MySQL Slave 1** | 3307 | `aviator_read` / `ReadPassword123!` | Lectura |
-| **MySQL Slave 2** | 3309 | `aviator_read` / `ReadPassword123!` | Lectura |
-| **PHPMyAdmin** | 8080 | Acceso web a todas las bases | Admin |
-| **Node.js API** | 4000 | - | WebSocket + API |
-
-## 🔐 Usuarios de Base de Datos
-
-- **`replica_user`**: Usuario dedicado para replicación entre servidores
-- **`aviator_app`**: Usuario de aplicación para operaciones de escritura
-- **`aviator_read`**: Usuario de solo lectura para los slaves
-- **`monitor_user`**: Usuario para monitoreo del sistema
-
-## 🎯 Características Principales
-
-### ✅ Sistema de Replicación Robusto
-- **Master-Slave con 2 esclavos** para alta disponibilidad
-- **GTID (Global Transaction ID)** para replicación consistente
-- **Load balancing automático** entre slaves para lecturas
-- **Failover automático** si un slave falla
-
-### ✅ Base de Datos Optimizada
-- **7 tablas** con relaciones optimizadas
-- **Índices especializados** para consultas rápidas
-- **Triggers automáticos** para estadísticas
-- **Transacciones ACID** para operaciones críticas
-
-### ✅ Sistema de Juego Completo
-- **Múltiples salas de juego** simultáneas
-- **Sistema de apuestas** con cash-out en tiempo real
-- **Estadísticas de jugadores** detalladas
-- **Historial completo** de partidas
-
-## 🛠️ Comandos Útiles
-
-### Gestión de Base de Datos
-```bash
-# Setup inicial
-node scripts/setup_database.js setup
-
-# Verificar replicación
-node scripts/setup_database.js check-replication
-
-# Crear datos de desarrollo
-node scripts/setup_database.js seed-dev
-
-# Resetear base de datos (¡CUIDADO!)
-node scripts/setup_database.js reset
-```
+## Comandos de Administración
 
 ### Gestión de Contenedores
+
 ```bash
-# Ver logs
-docker logs aviator-mysql-master
-docker logs aviator-mysql-slave1
-docker logs aviator-mysql-slave2
-
-# Reiniciar servicios
-docker-compose restart
-
-# Parar todo
+# Detener todos los servicios
 docker-compose down
+docker-compose -f docker-compose.mongodb.yml down
 
-# Parar y eliminar volúmenes
+# Reiniciar servicios específicos
+docker-compose restart aviator-backend-1
+docker-compose restart nginx-load-balancer
+
+# Ver estado de recursos
+docker stats
+
+# Limpiar volúmenes (CUIDADO: Elimina datos)
 docker-compose down -v
 ```
 
-### Verificación Manual
+### Monitoreo y Logs
+
 ```bash
-# Estado de replicación en slaves
-docker exec aviator-mysql-slave1 mysql -uroot -pRootPassword123! -e "SHOW SLAVE STATUS\G"
-docker exec aviator-mysql-slave2 mysql -uroot -pRootPassword123! -e "SHOW SLAVE STATUS\G"
+# Logs en tiempo real de todos los servicios
+docker-compose logs -f --tail=100
 
-# Estado del master
-docker exec aviator-mysql-master mysql -uroot -pRootPassword123! -e "SHOW MASTER STATUS"
+# Logs específicos por servicio
+docker-compose logs -f redis-server
+docker-compose logs -f mongodb-primary
+
+# Verificar uso de recursos
+docker system df
 ```
 
-## 🔧 Integración con tu Código
+### Pruebas de Conectividad
 
-El sistema incluye modelos pre-construidos para integrarse fácilmente:
-
-```javascript
-const PlayerModel = require('./database/models/Player');
-const BetModel = require('./database/models/Bet');
-const GameHallModel = require('./database/models/GameHall');
-const GameRoundModel = require('./database/models/GameRound');
-
-// Ejemplo: Crear jugador
-const player = await PlayerModel.create({
-    username: 'nuevo_jugador',
-    register_date: new Date()
-});
-
-// Ejemplo: Realizar apuesta
-const bet = await BetModel.create({
-    id_player: player.id_player,
-    id_round: currentRound.id_round,
-    amount: 50.00
-});
-
-// Ejemplo: Cash out
-const result = await BetModel.cashOut(bet.id_bet, 2.5);
-```
-
-## 🚨 Troubleshooting
-
-### Problema: Replicación no funciona
-**Solución:**
 ```bash
-# 1. Verificar usuarios de replicación
-docker exec aviator-mysql-master mysql -uroot -pRootPassword123! -e "
-SELECT User, Host FROM mysql.user WHERE User = 'replica_user';
-"
+# Probar el balanceador de carga
+curl http://localhost:80/health
+curl http://localhost:8080/health
 
-# 2. Verificar estado de slaves
-./validate_replication.sh
+# Probar conexión directa a Redis
+docker exec -it aviator-redis redis-cli
+# Dentro de redis-cli:
+# ping
+# info
+# exit
 
-# 3. Reiniciar replicación si es necesario
-docker exec aviator-mysql-slave1 mysql -uroot -pRootPassword123! -e "
-STOP SLAVE; RESET SLAVE; START SLAVE;
-"
+# Probar conexión a MongoDB Primary
+docker exec -it mongodb-primary mongosh aviator_game
+# Dentro de mongosh:
+# db.test.insertOne({name: "test"})
+# db.test.find()
+# exit
+
+# Probar conexión a MongoDB Secondary (solo lectura)
+docker exec -it mongodb-secondary1 mongosh aviator_game
+# Dentro de mongosh:
+# rs.secondaryOk()
+# db.test.find()
+# exit
 ```
 
-### Problema: Error de conexión
-**Solución:**
-1. Verificar que los contenedores estén ejecutándose: `docker ps`
-2. Verificar las credenciales en `.env`
-3. Verificar que los puertos no estén ocupados: `netstat -an | grep 3306`
+## Acceso a Servicios
 
-### Problema: Performance lenta
-**Solución:**
-1. Verificar configuración del pool de conexiones
-2. Revisar índices de base de datos
-3. Monitorear queries lentas en logs de MySQL
+### URLs de Acceso
 
-## 📈 Escalabilidad y Rendimiento
+- **Aplicación Principal**: http://localhost:80
+- **Aplicación (Puerto Alternativo)**: http://localhost:8080
+- **Mongo Express (Admin DB)**: http://localhost:8081
+  - Usuario: admin
+  - Contraseña: aviatorpassword123
 
-Esta configuración soporta:
-- ✅ **Miles de jugadores** simultáneos
-- ✅ **Cientos de apuestas** por segundo
-- ✅ **Múltiples salas** de juego en paralelo
-- ✅ **Alta disponibilidad** con failover automático
-- ✅ **Distribución de carga** automática en lecturas
+### Conexiones Directas a Base de Datos
 
-## 📚 Documentación Adicional
+```bash
+# MongoDB Primary (Lectura/Escritura)
+mongosh mongodb://localhost:27017/aviator_game
 
-- [📖 Guía Detallada de Base de Datos](README_DATABASE.md)
-- [🔧 Configuración de Replicación](database/replication/)
-- [📊 Scripts de Monitoreo](scripts/)
+# MongoDB Secondary 1 (Solo Lectura)
+mongosh mongodb://localhost:27018/aviator_game
 
----
+# MongoDB Secondary 2 (Solo Lectura)  
+mongosh mongodb://localhost:27019/aviator_game
+
+# Redis
+redis-cli -h localhost -p 6379
+```
+
+## Arquitectura de Red
+### Distribución de Puertos
+
+| Servicio | Puerto Host | Puerto Container | Descripción |
+|----------|-------------|------------------|-------------|
+| NGINX Load Balancer | 80, 8080 | 80 | Balanceador de carga principal |
+| Redis Server | 6379 | 6379 | Cache y estado centralizado |
+| MongoDB Primary | 27017 | 27017 | Base de datos principal (R/W) |
+| MongoDB Secondary 1 | 27018 | 27017 | Replica secundaria (R) |
+| MongoDB Secondary 2 | 27019 | 27017 | Replica secundaria (R) |
+| Mongo Express | 8081 | 8081 | Interfaz web para MongoDB |
+| Backend Instances | - | 4000 | Solo accesibles via load balancer |
+
+### Flujo de Datos
+
+```
+Cliente Web
+    ↓ HTTP/WebSocket (Puerto 80/8080)
+NGINX Load Balancer
+    ↓ Distribución least_conn/ip_hash
+Backend Instances (3x)
+    ↓ Estado sincronizado via Redis
+Redis Server (Puerto 6379)
+    ↓ Datos persistentes
+MongoDB Replica Set
+    ├── Primary (R/W - Puerto 27017)
+    ├── Secondary 1 (R - Puerto 27018)  
+    └── Secondary 2 (R - Puerto 27019)
+```
+```
+
 
 **Desarrollado por:** Gabriel, Edinson, Deivid  
 **Tecnologías:** Node.js, Socket.io, MySQL 8.0, Docker  
