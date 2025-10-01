@@ -81,6 +81,8 @@ services:
       ME_CONFIG_MONGODB_PORT: 27017
       ME_CONFIG_BASICAUTH_USERNAME: admin
       ME_CONFIG_BASICAUTH_PASSWORD: aviatorpassword123
+      ME_CONFIG_MONGODB_ENABLE_ADMIN: true
+      ME_CONFIG_OPTIONS_REPLICASET: false
     networks:
       - aviator-network
     depends_on:

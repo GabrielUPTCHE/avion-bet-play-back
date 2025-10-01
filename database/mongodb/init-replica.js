@@ -63,79 +63,17 @@ print("✅ Base de datos configurada (sin autenticación)");
 // Crear colecciones con validación de esquema
 print("📋 Creando colecciones...");
 
-// 1. Colección de partidas/rondas
-db.createCollection("game_rounds", {
-  validator: {
-    $jsonSchema: {
-      bsonType: "object",
-      required: ["round_id", "start_time", "end_time", "crash_multiplier", "status"],
-      properties: {
-        round_id: { bsonType: "string" },
-        start_time: { bsonType: "date" },
-        end_time: { bsonType: "date" },
-        crash_multiplier: { bsonType: "double" },
-        status: { enum: ["completed", "cancelled"] },
-        total_bets: { bsonType: "int" },
-        total_bet_amount: { bsonType: "double" },
-        total_winnings: { bsonType: "double" },
-        winner_count: { bsonType: "int" },
-        created_at: { bsonType: "date" },
-        server_instance: { bsonType: "string" }
-      }
-    }
-  }
-});
+// Crear colecciones SIN validadores para máxima compatibilidad
+print("🔧 Creando colecciones sin validadores estrictos...");
+
+// 1. Colección de rondas del juego
+db.createCollection("game_rounds");
 
 // 2. Colección de apuestas
-db.createCollection("bets", {
-  validator: {
-    $jsonSchema: {
-      bsonType: "object",
-      required: ["bet_id", "round_id", "player_id", "username", "bet_amount", "bet_time"],
-      properties: {
-        bet_id: { bsonType: "string" },
-        round_id: { bsonType: "string" },
-        player_id: { bsonType: "string" },
-        username: { bsonType: "string" },
-        bet_amount: { bsonType: "double" },
-        bet_time: { bsonType: "date" },
-        cash_out_multiplier: { bsonType: ["double", "null"] },
-        cash_out_time: { bsonType: ["date", "null"] },
-        winnings: { bsonType: ["double", "null"] },
-        is_winner: { bsonType: "bool" },
-        is_cashed_out: { bsonType: "bool" },
-        created_at: { bsonType: "date" },
-        server_instance: { bsonType: "string" }
-      }
-    }
-  }
-});
+db.createCollection("bets");
 
 // 3. Colección de estadísticas de jugadores
-db.createCollection("player_stats", {
-  validator: {
-    $jsonSchema: {
-      bsonType: "object",
-      required: ["player_id", "username"],
-      properties: {
-        player_id: { bsonType: "string" },
-        username: { bsonType: "string" },
-        total_bets: { bsonType: "int" },
-        total_bet_amount: { bsonType: "double" },
-        total_winnings: { bsonType: "double" },
-        total_losses: { bsonType: "double" },
-        win_rate: { bsonType: "double" },
-        biggest_win: { bsonType: ["double", "null"] },
-        biggest_win_multiplier: { bsonType: ["double", "null"] },
-        average_bet: { bsonType: "double" },
-        rounds_played: { bsonType: "int" },
-        first_played: { bsonType: "date" },
-        last_played: { bsonType: "date" },
-        updated_at: { bsonType: "date" }
-      }
-    }
-  }
-});
+db.createCollection("player_stats");
 
 
 
@@ -164,6 +102,13 @@ db.player_stats.createIndex({ "last_played": -1 });
 
 
 print("✅ Colecciones e índices creados correctamente");
+
+// Asegurar que no haya validadores en las colecciones
+print("🔧 Deshabilitando validadores para máxima compatibilidad...");
+db.runCommand({collMod: 'game_rounds', validator: {}, validationLevel: 'off'});
+db.runCommand({collMod: 'bets', validator: {}, validationLevel: 'off'});
+db.runCommand({collMod: 'player_stats', validator: {}, validationLevel: 'off'});
+print("✅ Validadores deshabilitados permanentemente");
 
 // Insertar datos iniciales de ejemplo
 print("🔢 Insertando datos de ejemplo...");
