@@ -8,7 +8,7 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"      # Puerto principal de la aplicación
-      - "8081:80"    # Puerto alternativo para acceso directo
+      - "8080:80"    # Puerto alternativo para acceso directo
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
@@ -156,10 +156,8 @@ services:
 
 networks:
   aviator-network:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 192.168.100.0/24
+    external: true
+    name: avion-bet-play-back_aviator-network
 
 volumes:
   master-data:

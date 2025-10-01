@@ -1,0 +1,100 @@
+# MongoDB Replica Set Configuration
+# docker-compose.mongodb.yml
+
+version: '3.8'
+
+services:
+  # MongoDB Primary (Master)
+  mongodb-primary:
+    image: mongo:7.0
+    container_name: mongodb-primary
+    hostname: mongodb-primary
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: aviator_game
+    volumes:
+      - mongodb_primary_data:/data/db
+      - ./database/mongodb/init-replica.js:/docker-entrypoint-initdb.d/init-replica.js:ro
+    command: mongod --replSet aviator-replica --bind_ip_all
+    networks:
+      - aviator-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MongoDB Secondary 1 (Slave 1)
+  mongodb-secondary1:
+    image: mongo:7.0
+    container_name: mongodb-secondary1
+    hostname: mongodb-secondary1
+    ports:
+      - "27018:27017"
+    environment: {}
+    volumes:
+      - mongodb_secondary1_data:/data/db
+    command: mongod --replSet aviator-replica --bind_ip_all
+    networks:
+      - aviator-network
+    restart: unless-stopped
+    depends_on:
+      - mongodb-primary
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MongoDB Secondary 2 (Slave 2)
+  mongodb-secondary2:
+    image: mongo:7.0
+    container_name: mongodb-secondary2
+    hostname: mongodb-secondary2
+    ports:
+      - "27019:27017"
+    environment: {}
+    volumes:
+      - mongodb_secondary2_data:/data/db
+    command: mongod --replSet aviator-replica --bind_ip_all
+    networks:
+      - aviator-network
+    restart: unless-stopped
+    depends_on:
+      - mongodb-primary
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MongoDB Express (Interfaz web opcional)
+  mongo-express:
+    image: mongo-express:1.0.0
+    container_name: mongo-express
+    ports:
+      - "8081:8081"
+    environment:
+      ME_CONFIG_MONGODB_SERVER: mongodb-primary
+      ME_CONFIG_MONGODB_PORT: 27017
+      ME_CONFIG_BASICAUTH_USERNAME: admin
+      ME_CONFIG_BASICAUTH_PASSWORD: aviatorpassword123
+    networks:
+      - aviator-network
+    depends_on:
+      - mongodb-primary
+    restart: unless-stopped
+
+volumes:
+  mongodb_primary_data:
+    driver: local
+  mongodb_secondary1_data:
+    driver: local
+  mongodb_secondary2_data:
+    driver: local
+
+networks:
+  aviator-network:
+    driver: bridge
