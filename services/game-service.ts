@@ -127,6 +127,13 @@ export function getSessionPlayers() {
     return gameHalls[0].game_sessions;
 }
 
+export function getActivePlayers() {
+    // Extraer solo los jugadores de las sesiones activas
+    return gameHalls[0].game_sessions
+        .filter(session => session.date_exit === null) // Solo sesiones activas
+        .map(session => session.player); // Solo la info del jugador
+}
+
 export function removePlayerFromSessions(id_socket: string) {
   gameHalls.forEach((hall) => {
     hall.game_sessions = hall.game_sessions.filter(
@@ -147,12 +154,23 @@ export function addSessionToHall(player: any) {
 }
 
 export function addBetToCurrentRound(playerId: string, amount: number) {
-    const player = players?.find(p => p.id_player === playerId);
-    console.log('el player', player)
-    if (!player) return null;   
-    console.log('el playerrrrr', player)
+    // Buscar en las sesiones activas, no en la lista estática
+    const session = gameHalls[0].game_sessions?.find(s => s.id_session === playerId);
+    const player = session?.player;
+    
+    console.log('el player desde sesión:', player)
+    if (!player) {
+        console.log('❌ Player no encontrado en sesiones activas para ID:', playerId);
+        return null;   
+    }
+    
+    console.log('✅ Player encontrado:', player)
     const currentRound = gameHalls[0].game_rounds[0]
-    if (!currentRound) return null;   
+    if (!currentRound) {
+        console.log('❌ No hay ronda actual disponible');
+        return null;   
+    }
+    
     currentRound.bets.push({
         id_bet: (currentRound.bets.length + 1).toString(),
         player: player,
@@ -162,7 +180,9 @@ export function addBetToCurrentRound(playerId: string, amount: number) {
         multiplyer: null,
         is_active: true
     });
+    
     gameHallsHistorical = JSON.parse(JSON.stringify(gameHalls));
+    console.log(`💰 Apuesta agregada exitosamente: ${player.username} - $${amount}`);
     return player;
 }
 

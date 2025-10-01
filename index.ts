@@ -227,21 +227,68 @@ io.on("connection", (socket) => {
   const clientIp = getClientIp(socket);
   console.log(`✅ [${INSTANCE_ID}] Cliente conectado: ${socket.id} desde IP ${clientIp}`);
 
-  socket.on("join_game", (playerData) => {
+  socket.on("join_game", async (playerData) => {
     const { username, register_date } = playerData;
-    addSessionPlayer({ id_player: socket.id, username, register_date });
-    console.log(`🎮 [${INSTANCE_ID}] Jugador ${playerData.username} (${socket.id}) se unió`);
-    console.log('se emite para el update los players:', getPlayers())
-    io.emit("players_update", getPlayers());
-    io.emit("bets_update", getGameHall(0));
-    if (!gameInterval) {
-      startCountdownRound(io);
+    
+    try {
+      // Agregar sesión local
+      addSessionPlayer({ id_player: socket.id, username, register_date });
+      console.log(`🎮 [${INSTANCE_ID}] Jugador ${playerData.username} (${socket.id}) se unió`);
+      
+      // Sincronizar sesión con Redis si está disponible
+      if (redisManager) {
+        await redisManager.publishPlayerUpdate({
+          action: 'join',
+          player: { id_player: socket.id, username, register_date },
+          instanceId: INSTANCE_ID,
+          timestamp: Date.now()
+        });
+        console.log(`📡 [${INSTANCE_ID}] Sesión de ${username} publicada a Redis`);
+      }
+      
+      // Enviar jugadores activos, no las sesiones completas
+      const { getActivePlayers } = require("./services/game-service");
+      const activePlayers = getActivePlayers();
+      console.log('se emite para el update los players (jugadores activos):', activePlayers)
+      io.emit("players_update", activePlayers);
+      io.emit("bets_update", getGameHall(0));
+      
+      if (!gameInterval) {
+        startCountdownRound(io);
+      }
+      
+    } catch (error) {
+      console.error(`❌ [${INSTANCE_ID}] Error en join_game:`, error);
     }
   });
 
 
-  socket.on("disconnect", (reason) => {
+  socket.on("disconnect", async (reason) => {
     console.log(`⚠️ [${INSTANCE_ID}] Cliente ${socket.id} desconectado (${reason})`);
+    
+    try {
+      // Obtener información del jugador antes de remover
+      const { getSessionPlayers, removePlayerFromSessions } = require("./services/game-service");
+      const sessions = getSessionPlayers();
+      const playerSession = sessions.find(s => s.id_session === socket.id);
+      
+      if (playerSession && redisManager) {
+        // Publicar desconexión a Redis
+        await redisManager.publishPlayerUpdate({
+          action: 'leave',
+          player: playerSession.player,
+          instanceId: INSTANCE_ID,
+          timestamp: Date.now()
+        });
+        console.log(`📡 [${INSTANCE_ID}] Desconexión de ${playerSession.player.username} publicada a Redis`);
+      }
+      
+      // Remover sesión local
+      removePlayerFromSessions(socket.id);
+      
+    } catch (error) {
+      console.error(`❌ [${INSTANCE_ID}] Error en disconnect:`, error);
+    }
   });
 
   socket.on("new_bet", async (newBet) => {

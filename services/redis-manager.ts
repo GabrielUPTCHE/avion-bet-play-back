@@ -185,18 +185,34 @@ export class RedisGameManager {
   }
 
   // ===== MANEJO DE JUGADORES =====
-  async publishPlayerUpdate(players: any[]): Promise<void> {
-    const event: GameStateEvent = {
-      type: 'players_update',
-      data: players,
-      instanceId: this.instanceId,
-      timestamp: Date.now()
-    };
+  async publishPlayerUpdate(playersOrAction: any[] | any): Promise<void> {
+    let event: GameStateEvent;
+    
+    // Si es un array, es la lista completa de jugadores (comportamiento original)
+    if (Array.isArray(playersOrAction)) {
+      event = {
+        type: 'players_update',
+        data: playersOrAction,
+        instanceId: this.instanceId,
+        timestamp: Date.now()
+      };
+      
+      await this.redisClient.set(this.KEYS.ACTIVE_PLAYERS, JSON.stringify(playersOrAction));
+      console.log(`👥 [${this.instanceId}] Jugadores actualizados: ${playersOrAction.length} activos`);
+    } 
+    // Si es un objeto, es una acción individual (join/leave)
+    else {
+      event = {
+        type: 'players_update',
+        data: playersOrAction,
+        instanceId: this.instanceId,
+        timestamp: Date.now()
+      };
+      
+      console.log(`� [${this.instanceId}] Acción de jugador: ${playersOrAction.action} - ${playersOrAction.player?.username}`);
+    }
 
     await this.pubClient.publish(this.CHANNELS.PLAYERS, JSON.stringify(event));
-    await this.redisClient.set(this.KEYS.ACTIVE_PLAYERS, JSON.stringify(players));
-    
-    console.log(`👥 [${this.instanceId}] Jugadores actualizados: ${players.length} activos`);
   }
 
   async getActivePlayers(): Promise<any[]> {
@@ -246,10 +262,30 @@ export class RedisGameManager {
     // No procesar eventos de la misma instancia
     if (event.instanceId === this.instanceId) return;
 
-    console.log(`👤 [${this.instanceId}] Jugadores actualizados de ${event.instanceId}`);
-    
-    // Retransmitir actualización de jugadores
-    this.io.emit('players_update', event.data);
+    // Si es una acción individual de jugador (join/leave)
+    if (event.data.action && event.data.player) {
+      console.log(`👤 [${this.instanceId}] Acción de jugador de ${event.instanceId}: ${event.data.action} - ${event.data.player.username}`);
+      
+      // Si es un 'join', agregar la sesión localmente para que pueda apostar
+      if (event.data.action === 'join') {
+        // Importar y usar la función addSessionPlayer
+        const { addSessionPlayer, getActivePlayers } = require('./game-service');
+        addSessionPlayer(event.data.player);
+        console.log(`📥 [${this.instanceId}] Sesión de ${event.data.player.username} agregada localmente`);
+        
+        // Enviar jugadores activos actualizados
+        this.io.emit('players_update', getActivePlayers());
+      } else if (event.data.action === 'leave') {
+        // Para leave, también enviar jugadores activos actualizados
+        const { getActivePlayers } = require('./game-service');
+        this.io.emit('players_update', getActivePlayers());
+      }
+    } 
+    // Si es una lista completa de jugadores
+    else if (Array.isArray(event.data)) {
+      console.log(`👥 [${this.instanceId}] Lista de jugadores actualizada de ${event.instanceId}: ${event.data.length} jugadores`);
+      this.io.emit('players_update', event.data);
+    }
   }
 
   // ===== UTILIDADES =====
