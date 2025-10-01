@@ -15,6 +15,9 @@ RUN npm install
 # Copiar el resto del código
 COPY . .
 
+# 👇 Compilar TypeScript a JS
+RUN npm run build
+
 # Crear usuario no-root
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nodejs -u 1001
@@ -24,4 +27,4 @@ USER nodejs
 EXPOSE 4000
 
 ENTRYPOINT ["dumb-init", "--"]
-CMD ["npm", "start"]
+CMD ["npm", "run", "start:prod"]

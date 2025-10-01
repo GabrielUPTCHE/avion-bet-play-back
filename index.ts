@@ -1,15 +1,17 @@
-// backend/index.js
+// backend/index.ts
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
 const { createAdapter } = require("@socket.io/redis-adapter");
 const { createClient } = require("redis");
 const cors = require("cors");
-const { addPlayer, getPlayers, addBetToCurrentRound, getGameHall, cancelBet, setRoundStatusHall, getRoundStatusHall } = require("./services/game-service.ts");
-const { generateRoundService } = require("./services/aviator-service.ts");
+const { addSessionPlayer, getPlayers, addBetToCurrentRound, getGameHall, cancelBet, setRoundStatusHall, getRoundStatusHall } = require("./services/game-service");
+console.log("game-service exports:", require("./services/game-service"));
+
+const { generateRoundService } = require("./services/aviator-service");
 
 // Importar Redis Manager
-const { RedisGameManager } = require("./services/redis-manager.ts");
+const { RedisGameManager } = require("./services/redis-manager");
 
 // Identificador de la instancia para logs
 const INSTANCE_ID = process.env.INSTANCE_ID || `backend-${Math.random().toString(36).substr(2, 9)}`;
@@ -227,7 +229,7 @@ io.on("connection", (socket) => {
 
   socket.on("join_game", (playerData) => {
     const { username, register_date } = playerData;
-    addPlayer({ id_player: socket.id, username, register_date });
+    addSessionPlayer({ id_player: socket.id, username, register_date });
     console.log(`🎮 [${INSTANCE_ID}] Jugador ${playerData.username} (${socket.id}) se unió`);
     console.log('se emite para el update los players:', getPlayers())
     io.emit("players_update", getPlayers());
