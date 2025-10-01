@@ -173,7 +173,10 @@ export function addBetToCurrentRound(playerId: string, amount: number) {
     
     currentRound.bets.push({
         id_bet: (currentRound.bets.length + 1).toString(),
-        player: player,
+        player: {
+            ...player,
+            id_player: playerId  // Usar el socket.id, no el id del player estático
+        },
         amount: amount,
         date_bet: new Date().toString(),
         ganancy: null,
@@ -186,26 +189,37 @@ export function addBetToCurrentRound(playerId: string, amount: number) {
     return player;
 }
 
-export function cancelBet(playerId: string, currentMultiplier: number) {
-    // Encuentra la ronda actual
+export function cancelBet(playerId: string, currentMultiplier?: number) {
     const currentRound = getGameHall(0).game_rounds[0];
-    if (!currentRound) return null;
+    if (!currentRound) {
+        console.log('❌ No hay ronda actual');
+        return null;
+    }
 
-    // Encuentra la apuesta del jugador con tipo explícito
+    // Buscar por el id_player que ahora es el socket.id
     const betIndex = currentRound.bets.findIndex(
         (bet: Bet) => bet.player.id_player === playerId && bet.is_active
     );
 
-    if (betIndex === -1) return null;
+    if (betIndex === -1) {
+        console.log(`❌ No se encontró apuesta activa para jugador: ${playerId}`);
+        console.log('Apuestas actuales:', currentRound.bets.map(b => ({
+            id_player: b.player.id_player,
+            username: b.player.username,
+            is_active: b.is_active
+        })));
+        return null;
+    }
 
     const bet = currentRound.bets[betIndex];
+    console.log(`✅ Apuesta encontrada para ${bet.player.username}`);
     
-    // Si la ronda está en progreso, calcula la ganancia
-    if (currentRound.state === 'in_progress') {
+    // Si se proporciona currentMultiplier, calcula la ganancia
+    if (currentMultiplier) {
         bet.ganancy = bet.amount * currentMultiplier;
         bet.multiplyer = currentMultiplier;
+        console.log(`💰 Ganancia calculada: $${bet.ganancy.toFixed(2)} (${currentMultiplier.toFixed(2)}x)`);
     } else {
-        // Si la ronda no está en progreso o ya terminó, no hay ganancia
         bet.ganancy = 0;
         bet.multiplyer = null;
     }

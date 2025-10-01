@@ -10,10 +10,10 @@ console.log("game-service exports:", require("./services/game-service"));
 
 const { generateRoundService } = require("./services/aviator-service");
 
-// Importar Redis Manager y MongoDB Service
+// Importar Redis Manager
 const { RedisGameManager } = require("./services/redis-manager");
-const MongoDBService = require("./services/mongodb-service").default;
 
+let currentMultiplier = 1.0;
 // Identificador de la instancia para logs
 const INSTANCE_ID = process.env.INSTANCE_ID || `backend-${Math.random().toString(36).substr(2, 9)}`;
 const PORT = process.env.PORT || 4000;
@@ -35,10 +35,9 @@ const io = new Server(server, {
   }
 });
 
-// Variables globales para Redis, MongoDB y estado del juego
+// Variables globales para Redis y estado del juego
 let redisManager;
 let redisAdapter;
-let mongoDBService;
 
 let countdown = 10;
 let gameInterval;
@@ -60,26 +59,33 @@ function startCountdownRound(io) {
 function startAviatorSimulate(io) {
   if (isRunning) return;
   isRunning = true;
-  multiplier = 1.0;
+  currentMultiplier = 1.0;
   const crashPoint = parseFloat((Math.random() * 15 + 1.1).toFixed(2));
 
-  // Envía señal de inicio con los datos necesarios para que el front calcule
+  console.log(`🎮 [${INSTANCE_ID}] Iniciando ronda - Crash Point: ${crashPoint}x`);
+
+  // Enviar inicio de ronda
   io.emit("round_start", {
-    initialMultiplier: 1.0,
-    incrementInterval: 100, // milisegundos entre cada incremento
-    incrementAmount: 0.1    // cuánto aumenta en cada paso
+    crashPoint: crashPoint, // Enviamos el crashPoint para que el front sepa cuándo termina
+    timestamp: Date.now()
   });
 
   aviatorInterval = setInterval(() => {
-    multiplier += 0.1;
-    // Solo verifica si alcanzó el punto de quiebre
-    if (multiplier >= crashPoint) {
-      endRound(io);
+    currentMultiplier = parseFloat((currentMultiplier + 0.1).toFixed(2));
+    
+    // Emitir actualización del multiplicador
+    io.emit("multiplier_update", { 
+      multiplier: currentMultiplier 
+    });
+    
+    // Verificar si alcanzó el punto de quiebre
+    if (currentMultiplier >= crashPoint) {
+      endRound(io, crashPoint);
     }
   }, 100);
 }
 
-async function endRound(io) {
+function endRound(io, crashPoint) {
   if (!isRunning) return;
   isRunning = false;
 
@@ -88,53 +94,27 @@ async function endRound(io) {
     aviatorInterval = null;
   }
 
-  const finalMultiplier = parseFloat(multiplier.toFixed(2));
-  const endTime = new Date();
+  const finalMultiplier = crashPoint || currentMultiplier;
+  
+  // Calcular ganancias de todos los jugadores
+  const playerEarnings = calculatePlayerEarnings(finalMultiplier);
+  
+  console.log(`💥 [${INSTANCE_ID}] Ronda finalizada - Multiplicador final: ${finalMultiplier}x`);
+  console.log(`💰 [${INSTANCE_ID}] Ganancias calculadas:`, playerEarnings);
 
-  // Envía el multiplicador final cuando termina
-  modifyRound(io, 'finished', 5, false, 'La ronda ha finalizado')
+  // Modificar estado de la ronda
+  modifyRound(io, 'finished', 5, false, 'La ronda ha finalizado');
+  
+  // Emitir fin de ronda con ganancias
   io.emit("round_end", { 
-    finalMultiplier: finalMultiplier,
-    timestamp: Date.now()
+    finalMultiplier: parseFloat(finalMultiplier.toFixed(2)),
+    timestamp: Date.now(),
+    playerEarnings: playerEarnings // Enviar ganancias de todos los jugadores
   });
-
-  // Guardar estadísticas de la ronda en MongoDB (asíncrono, no bloquea el juego)
-  if (mongoDBService) {
-    const { getGameHall } = require("./services/game-service");
-    const currentRound = getGameHall(0);
-    
-    console.log(`🔍 [${INSTANCE_ID}] Datos de la ronda para MongoDB:`, JSON.stringify(currentRound, null, 2));
-    
-    if (currentRound && currentRound.game_rounds && currentRound.game_rounds[0]) {
-      const roundData = currentRound.game_rounds[0];
-      const roundId = `round_${Date.now()}_${INSTANCE_ID}`;
-      const startTime = new Date(Date.now() - (10000 + (multiplier - 1) * 100)); // Aproximar tiempo de inicio
-      
-      // Verificar que tenemos apuestas
-      const bets = roundData.bets || [];
-      console.log(`💰 [${INSTANCE_ID}] Apuestas encontradas en la ronda: ${bets.length}`);
-      if (bets.length > 0) {
-        console.log(`📋 [${INSTANCE_ID}] Detalles de apuestas:`, bets.map(bet => `${bet.player?.username || 'Unknown'}: $${bet.amount}`));
-      }
-      
-      // Procesar en background para no bloquear el juego
-      mongoDBService.processRoundEnd(
-        roundId,
-        startTime,
-        endTime,
-        finalMultiplier,
-        bets
-      ).catch(error => {
-        console.error(`❌ [${INSTANCE_ID}] Error guardando ronda en MongoDB:`, error);
-      });
-      
-      console.log(`📊 [${INSTANCE_ID}] Ronda ${roundId} enviada a MongoDB para procesamiento (${bets.length} apuestas)`);
-    } else {
-      console.warn(`⚠️ [${INSTANCE_ID}] No se encontraron datos de ronda para guardar en MongoDB`);
-    }
-  }
-
-  startCountdownRound(io)
+  
+  // Reiniciar contador
+  currentMultiplier = 1.0;
+  startCountdownRound(io);
 }
 
 function selectStateRound() {
@@ -152,6 +132,30 @@ function selectStateRound() {
   }
 }
 
+function calculatePlayerEarnings(finalMultiplier) {
+  const currentRound = getGameHall(0);
+  const earnings = [];
+  
+  if (!currentRound || !currentRound.bets) {
+    return earnings;
+  }
+  
+  currentRound.bets.forEach(bet => {
+    const earning = bet.amount * finalMultiplier;
+    const profit = earning - bet.amount;
+    
+    earnings.push({
+      id_player: bet.id_player,
+      betAmount: bet.amount,
+      multiplier: finalMultiplier,
+      earning: earning,
+      profit: profit
+    });
+  });
+  
+  return earnings;
+}
+
 function modifyRound(io, newState, newTimeSec, isBetTime, title) {
   setRoundStatusHall(0, 0, newState)
   countdown = newTimeSec;
@@ -163,16 +167,13 @@ function modifyRound(io, newState, newTimeSec, isBetTime, title) {
 
 
 // Health check endpoint
-app.get('/health', async (req, res) => {
-  const mongoStatus = mongoDBService ? await mongoDBService.getHealthStatus() : { status: 'disconnected' };
-  
+app.get('/health', (req, res) => {
   res.json({ 
     status: 'ok', 
     instance: INSTANCE_ID,
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    redis: redisManager ? 'connected' : 'disconnected',
-    mongodb: mongoStatus
+    redis: redisManager ? 'connected' : 'disconnected'
   });
 });
 
@@ -243,123 +244,6 @@ app.post('/redis-clear', async (req, res) => {
   }
 });
 
-// ===== ENDPOINTS DE ESTADÍSTICAS MONGODB =====
-app.get('/stats/players/top', async (req, res) => {
-  try {
-    if (!mongoDBService) {
-      return res.status(503).json({
-        error: 'MongoDB no disponible',
-        instance: INSTANCE_ID
-      });
-    }
-
-    const limit = parseInt(req.query.limit as string) || 10;
-    const topPlayers = await mongoDBService.getTopPlayers(limit);
-    
-    res.json({
-      success: true,
-      instance: INSTANCE_ID,
-      data: topPlayers,
-      timestamp: new Date().toISOString()
-    });
-    
-  } catch (error) {
-    console.error(`❌ [${INSTANCE_ID}] Error obteniendo top players:`, error);
-    res.status(500).json({
-      error: 'Error obteniendo estadísticas de jugadores',
-      instance: INSTANCE_ID,
-      details: error.message
-    });
-  }
-});
-
-app.get('/stats/rounds/recent', async (req, res) => {
-  try {
-    if (!mongoDBService) {
-      return res.status(503).json({
-        error: 'MongoDB no disponible',
-        instance: INSTANCE_ID
-      });
-    }
-
-    const limit = parseInt(req.query.limit as string) || 20;
-    const recentRounds = await mongoDBService.getRecentRounds(limit);
-    
-    res.json({
-      success: true,
-      instance: INSTANCE_ID,
-      data: recentRounds,
-      timestamp: new Date().toISOString()
-    });
-    
-  } catch (error) {
-    console.error(`❌ [${INSTANCE_ID}] Error obteniendo rondas recientes:`, error);
-    res.status(500).json({
-      error: 'Error obteniendo rondas recientes',
-      instance: INSTANCE_ID,
-      details: error.message
-    });
-  }
-});
-
-app.get('/stats/round/:roundId', async (req, res) => {
-  try {
-    if (!mongoDBService) {
-      return res.status(503).json({
-        error: 'MongoDB no disponible',
-        instance: INSTANCE_ID
-      });
-    }
-
-    const { roundId } = req.params;
-    const roundStats = await mongoDBService.getRoundStats(roundId);
-    
-    res.json({
-      success: true,
-      instance: INSTANCE_ID,
-      data: roundStats,
-      timestamp: new Date().toISOString()
-    });
-    
-  } catch (error) {
-    console.error(`❌ [${INSTANCE_ID}] Error obteniendo estadísticas de ronda:`, error);
-    res.status(500).json({
-      error: 'Error obteniendo estadísticas de ronda',
-      instance: INSTANCE_ID,
-      details: error.message
-    });
-  }
-});
-
-app.get('/stats/player/:playerId', async (req, res) => {
-  try {
-    if (!mongoDBService) {
-      return res.status(503).json({
-        error: 'MongoDB no disponible',
-        instance: INSTANCE_ID
-      });
-    }
-
-    const { playerId } = req.params;
-    const playerStats = await mongoDBService.getPlayerStats(playerId);
-    
-    res.json({
-      success: true,
-      instance: INSTANCE_ID,
-      data: playerStats,
-      timestamp: new Date().toISOString()
-    });
-    
-  } catch (error) {
-    console.error(`❌ [${INSTANCE_ID}] Error obteniendo estadísticas de jugador:`, error);
-    res.status(500).json({
-      error: 'Error obteniendo estadísticas de jugador',
-      instance: INSTANCE_ID,
-      details: error.message
-    });
-  }
-});
-
 // Obtener IP del cliente
 function getClientIp(socket) {
   const forwarded = socket.handshake.headers["x-forwarded-for"];
@@ -389,68 +273,21 @@ io.on("connection", (socket) => {
   const clientIp = getClientIp(socket);
   console.log(`✅ [${INSTANCE_ID}] Cliente conectado: ${socket.id} desde IP ${clientIp}`);
 
-  socket.on("join_game", async (playerData) => {
+  socket.on("join_game", (playerData) => {
     const { username, register_date } = playerData;
-    
-    try {
-      // Agregar sesión local
-      addSessionPlayer({ id_player: socket.id, username, register_date });
-      console.log(`🎮 [${INSTANCE_ID}] Jugador ${playerData.username} (${socket.id}) se unió`);
-      
-      // Sincronizar sesión con Redis si está disponible
-      if (redisManager) {
-        await redisManager.publishPlayerUpdate({
-          action: 'join',
-          player: { id_player: socket.id, username, register_date },
-          instanceId: INSTANCE_ID,
-          timestamp: Date.now()
-        });
-        console.log(`📡 [${INSTANCE_ID}] Sesión de ${username} publicada a Redis`);
-      }
-      
-      // Enviar jugadores activos, no las sesiones completas
-      const { getActivePlayers } = require("./services/game-service");
-      const activePlayers = getActivePlayers();
-      console.log('se emite para el update los players (jugadores activos):', activePlayers)
-      io.emit("players_update", activePlayers);
-      io.emit("bets_update", getGameHall(0));
-      
-      if (!gameInterval) {
-        startCountdownRound(io);
-      }
-      
-    } catch (error) {
-      console.error(`❌ [${INSTANCE_ID}] Error en join_game:`, error);
+    addSessionPlayer({ id_player: socket.id, username, register_date });
+    console.log(`🎮 [${INSTANCE_ID}] Jugador ${playerData.username} (${socket.id}) se unió`);
+    console.log('se emite para el update los players:', getPlayers())
+    io.emit("players_update", getPlayers());
+    io.emit("bets_update", getGameHall(0));
+    if (!gameInterval) {
+      startCountdownRound(io);
     }
   });
 
 
-  socket.on("disconnect", async (reason) => {
+  socket.on("disconnect", (reason) => {
     console.log(`⚠️ [${INSTANCE_ID}] Cliente ${socket.id} desconectado (${reason})`);
-    
-    try {
-      // Obtener información del jugador antes de remover
-      const { getSessionPlayers, removePlayerFromSessions } = require("./services/game-service");
-      const sessions = getSessionPlayers();
-      const playerSession = sessions.find(s => s.id_session === socket.id);
-      
-      if (playerSession && redisManager) {
-        // Publicar desconexión a Redis
-        await redisManager.publishPlayerUpdate({
-          action: 'leave',
-          player: playerSession.player,
-          instanceId: INSTANCE_ID,
-          timestamp: Date.now()
-        });
-        console.log(`📡 [${INSTANCE_ID}] Desconexión de ${playerSession.player.username} publicada a Redis`);
-      }
-      
-      // Remover sesión local
-      removePlayerFromSessions(socket.id);
-      
-    } catch (error) {
-      console.error(`❌ [${INSTANCE_ID}] Error en disconnect:`, error);
-    }
   });
 
   socket.on("new_bet", async (newBet) => {
@@ -472,17 +309,31 @@ io.on("connection", (socket) => {
         
         console.log(`💰 [${INSTANCE_ID}] Apuesta publicada a Redis: ${id} - $${amount}`);
         
-        // Emitir a clientes locales (Redis se encarga de otras instancias)
+        // Emitir a clientes locales con confirmación
         io.emit("bets_update", getGameHall(0));
+        socket.emit("bet_confirmed", { 
+          id_player: id, 
+          amount: amount,
+          timestamp: Date.now()
+        });
         
       } else if (result) {
         // Modo standalone sin Redis
         console.log(`💰 [${INSTANCE_ID}] Apuesta procesada localmente: ${id} - $${amount}`);
         io.emit("bets_update", getGameHall(0));
+        socket.emit("bet_confirmed", { 
+          id_player: id, 
+          amount: amount,
+          timestamp: Date.now()
+        });
       }
       
     } catch (error) {
       console.error(`❌ [${INSTANCE_ID}] Error procesando apuesta:`, error);
+      socket.emit("bet_error", { 
+        error: "Error al procesar la apuesta",
+        details: error.message
+      });
     }
   });
 
@@ -511,6 +362,54 @@ io.on("connection", (socket) => {
       
     } catch (error) {
       console.error(`❌ [${INSTANCE_ID}] Error cancelando apuesta:`, error);
+    }
+  });
+
+  socket.on("cash_out", async (data) => {
+    const { id_player } = data;
+    
+    try {
+      if (!isRunning) {
+        console.log(`⚠️ [${INSTANCE_ID}] No hay ronda activa para cash out`);
+        return;
+      }
+
+      const currentRound = getGameHall(0);
+      const playerBet = currentRound?.game_rounds[0]?.bets?.find(
+        bet => bet.player.id_player === id_player && bet.is_active
+      );
+      
+      if (!playerBet) {
+        console.log(`⚠️ [${INSTANCE_ID}] No se encontró apuesta activa para ${id_player}`);
+        return;
+      }
+
+      // Calcular ganancia con el multiplicador actual
+      const earning = playerBet.amount * currentMultiplier;
+      const profit = earning - playerBet.amount;
+      
+      console.log(`💵 [${INSTANCE_ID}] Cash out - Jugador: ${playerBet.player.username}`);
+      console.log(`   Apuesta: $${playerBet.amount}`);
+      console.log(`   Multiplicador: ${currentMultiplier.toFixed(2)}x`);
+      console.log(`   Ganancia total: $${earning.toFixed(2)}`);
+      console.log(`   Beneficio neto: $${profit.toFixed(2)}`);
+
+      // Emitir al jugador específico
+      socket.emit("cash_out_success", {
+        id_player: id_player,
+        betAmount: playerBet.amount,
+        multiplier: currentMultiplier,
+        earning: earning,
+        profit: profit,
+        timestamp: Date.now()
+      });
+
+      // Remover la apuesta de la ronda actual (ahora con multiplicador)
+      cancelBet(id_player, currentMultiplier);
+      io.emit("bets_update", getGameHall(0));
+      
+    } catch (error) {
+      console.error(`❌ [${INSTANCE_ID}] Error en cash out:`, error);
     }
   });
 
@@ -547,23 +446,6 @@ async function initializeRedis() {
   }
 }
 
-// ===== INICIALIZACIÓN DE MONGODB =====
-async function initializeMongoDB() {
-  try {
-    console.log(`🍃 [${INSTANCE_ID}] Inicializando MongoDB...`);
-    
-    mongoDBService = new MongoDBService(INSTANCE_ID);
-    await mongoDBService.connect();
-    
-    console.log(`✅ [${INSTANCE_ID}] MongoDB inicializado correctamente`);
-    return true;
-    
-  } catch (error) {
-    console.error(`❌ [${INSTANCE_ID}] Error inicializando MongoDB:`, error);
-    return false;
-  }
-}
-
 // Inicializar servidor
 async function startServer() {
   try {
@@ -572,13 +454,6 @@ async function startServer() {
     
     if (!redisInitialized) {
       console.warn(`⚠️ [${INSTANCE_ID}] Continuando sin Redis (modo standalone)`);
-    }
-    
-    // Inicializar MongoDB
-    const mongoInitialized = await initializeMongoDB();
-    
-    if (!mongoInitialized) {
-      console.warn(`⚠️ [${INSTANCE_ID}] Continuando sin MongoDB (solo en memoria)`);
     }
     
     // Iniciar servidor
@@ -602,15 +477,9 @@ async function startServer() {
 // Manejo de cierre graceful
 process.on('SIGTERM', async () => {
   console.log(`🛑 [${INSTANCE_ID}] Recibiendo SIGTERM, cerrando gracefully...`);
-  
-  // Desconectar servicios
   if (redisManager) {
     await redisManager.disconnect();
   }
-  if (mongoDBService) {
-    await mongoDBService.disconnect();
-  }
-  
   server.close(() => {
     console.log(`👋 [${INSTANCE_ID}] Servidor cerrado`);
     process.exit(0);
@@ -619,15 +488,9 @@ process.on('SIGTERM', async () => {
 
 process.on('SIGINT', async () => {
   console.log(`🛑 [${INSTANCE_ID}] Recibiendo SIGINT, cerrando gracefully...`);
-  
-  // Desconectar servicios
   if (redisManager) {
     await redisManager.disconnect();
   }
-  if (mongoDBService) {
-    await mongoDBService.disconnect();
-  }
-  
   server.close(() => {
     console.log(`👋 [${INSTANCE_ID}] Servidor cerrado`);
     process.exit(0);
