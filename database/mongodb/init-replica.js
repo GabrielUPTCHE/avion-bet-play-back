@@ -137,29 +137,7 @@ db.createCollection("player_stats", {
   }
 });
 
-// 4. Colección de estadísticas globales del juego
-db.createCollection("game_stats", {
-  validator: {
-    $jsonSchema: {
-      bsonType: "object",
-      required: ["stat_type", "date"],
-      properties: {
-        stat_type: { enum: ["daily", "weekly", "monthly", "all_time"] },
-        date: { bsonType: "date" },
-        total_rounds: { bsonType: "int" },
-        total_bets: { bsonType: "int" },
-        total_bet_amount: { bsonType: "double" },
-        total_winnings: { bsonType: "double" },
-        house_edge: { bsonType: "double" },
-        average_crash_multiplier: { bsonType: "double" },
-        unique_players: { bsonType: "int" },
-        peak_concurrent_players: { bsonType: "int" },
-        created_at: { bsonType: "date" },
-        updated_at: { bsonType: "date" }
-      }
-    }
-  }
-});
+
 
 // Crear índices para optimizar consultas
 print("📊 Creando índices...");
@@ -183,30 +161,14 @@ db.player_stats.createIndex({ "total_winnings": -1 });
 db.player_stats.createIndex({ "win_rate": -1 });
 db.player_stats.createIndex({ "last_played": -1 });
 
-// Índices para game_stats
-db.game_stats.createIndex({ "stat_type": 1, "date": -1 }, { unique: true });
-db.game_stats.createIndex({ "date": -1 });
+
 
 print("✅ Colecciones e índices creados correctamente");
 
 // Insertar datos iniciales de ejemplo
 print("🔢 Insertando datos de ejemplo...");
 
-// Ejemplo de estadísticas globales iniciales
-db.game_stats.insertOne({
-  stat_type: "all_time",
-  date: new Date(),
-  total_rounds: 0,
-  total_bets: 0,
-  total_bet_amount: 0.0,
-  total_winnings: 0.0,
-  house_edge: 0.0,
-  average_crash_multiplier: 2.0,
-  unique_players: 0,
-  peak_concurrent_players: 0,
-  created_at: new Date(),
-  updated_at: new Date()
-});
+
 
 print("✅ Configuración inicial completa!");
 print("🎮 Base de datos aviator_game lista para usar");

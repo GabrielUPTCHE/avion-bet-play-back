@@ -45,8 +45,7 @@ export class RedisGameManager {
   private readonly KEYS = {
     CURRENT_BETS: 'aviator:current_bets',
     ROUND_STATE: 'aviator:round_state',
-    ACTIVE_PLAYERS: 'aviator:active_players',
-    GAME_STATS: 'aviator:game_stats'
+    ACTIVE_PLAYERS: 'aviator:active_players'
   };
 
   constructor(instanceId: string, io: Server, redisUrl: string = 'redis://localhost:6379') {

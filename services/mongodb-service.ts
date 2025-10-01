@@ -49,20 +49,7 @@ export interface PlayerStats {
   updated_at: Date;
 }
 
-export interface GameStats {
-  stat_type: 'daily' | 'weekly' | 'monthly' | 'all_time';
-  date: Date;
-  total_rounds: number;
-  total_bets: number;
-  total_bet_amount: number;
-  total_winnings: number;
-  house_edge: number;
-  average_crash_multiplier: number;
-  unique_players: number;
-  peak_concurrent_players: number;
-  created_at: Date;
-  updated_at: Date;
-}
+
 
 export class MongoDBService {
   private client: MongoClient;
@@ -74,7 +61,6 @@ export class MongoDBService {
   private gameRoundsCollection: Collection<GameRound>;
   private betsCollection: Collection<BetRecord>;
   private playerStatsCollection: Collection<PlayerStats>;
-  private gameStatsCollection: Collection<GameStats>;
 
   constructor(instanceId: string) {
     this.instanceId = instanceId;
@@ -107,7 +93,6 @@ export class MongoDBService {
       this.gameRoundsCollection = this.db.collection<GameRound>('game_rounds');
       this.betsCollection = this.db.collection<BetRecord>('bets');
       this.playerStatsCollection = this.db.collection<PlayerStats>('player_stats');
-      this.gameStatsCollection = this.db.collection<GameStats>('game_stats');
       
       this.connected = true;
       console.log(`🍃 [${this.instanceId}] MongoDB conectado al Replica Set`);
